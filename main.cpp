@@ -160,7 +160,7 @@ public:
         static const QHash<QString, QPsdExporterTreeItemModel::ExportHint::Type> typeMap = {
             {"embed"_L1,  QPsdExporterTreeItemModel::ExportHint::Embed},
             {"merge"_L1,  QPsdExporterTreeItemModel::ExportHint::Merge},
-            {"custom"_L1, QPsdExporterTreeItemModel::ExportHint::Custom},
+            {"custom"_L1, QPsdExporterTreeItemModel::ExportHint::Component},
             {"native"_L1, QPsdExporterTreeItemModel::ExportHint::Native},
             {"skip"_L1,   QPsdExporterTreeItemModel::ExportHint::Skip},
             {"none"_L1,   QPsdExporterTreeItemModel::ExportHint::None},
