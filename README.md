@@ -1,6 +1,6 @@
 # mcp-psd2x
 
-An MCP (Model Context Protocol) server for inspecting and exporting Adobe Photoshop (PSD) files. Built with [QtMcp](https://github.com/aspect-apps/qtmcp) and [QtPsd](https://github.com/signal-slot/qtpsd).
+An MCP (Model Context Protocol) server for inspecting and exporting Adobe Photoshop (PSD) files. Built with [QtMcp](https://github.com/signal-slot/qtmcp) and [QtPsd](https://github.com/signal-slot/qtpsd).
 
 ## Tools
 
@@ -36,7 +36,7 @@ An MCP (Model Context Protocol) server for inspecting and exporting Adobe Photos
 
 ## Build
 
-Requires Qt 6, [QtMcp](https://github.com/aspect-apps/qtmcp), and [QtPsd](https://github.com/signal-slot/qtpsd).
+Requires Qt 6, [QtMcp](https://github.com/signal-slot/qtmcp), and [QtPsd](https://github.com/signal-slot/qtpsd).
 
 ```bash
 cmake -B build -DQT_ADDITIONAL_PACKAGES_PREFIX_PATH="<qtmcp-build>;<qtpsd-build>"
