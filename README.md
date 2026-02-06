@@ -36,7 +36,26 @@ An MCP (Model Context Protocol) server for inspecting and exporting Adobe Photos
 
 ## Build
 
-Requires Qt 6, [QtMcp](https://github.com/signal-slot/qtmcp), and [QtPsd](https://github.com/signal-slot/qtpsd).
+Requires Qt 6.
+
+### Using submodules (recommended)
+
+```bash
+git clone --recursive https://github.com/signal-slot/mcp-psd2x.git
+cd mcp-psd2x
+./build.sh
+```
+
+Or if already cloned:
+
+```bash
+git submodule update --init --recursive
+./build.sh
+```
+
+### Using external builds
+
+If you have [QtMcp](https://github.com/signal-slot/qtmcp) and [QtPsd](https://github.com/signal-slot/qtpsd) built separately:
 
 ```bash
 cmake -B build -DQT_ADDITIONAL_PACKAGES_PREFIX_PATH="<qtmcp-build>;<qtpsd-build>"
@@ -47,27 +66,38 @@ cmake --build build
 
 ### stdio (default)
 
+With submodule build:
+
 ```bash
-export QT_PLUGIN_PATH="<qtmcp-build>/lib64/qt6/plugins:<qtpsd-build>/plugins"
-./mcp-psd2x
+export QT_PLUGIN_PATH="$PWD/build-qtmcp/lib64/qt6/plugins:$PWD/build-qtpsd/lib64/qt6/plugins"
+./build/mcp-psd2x
+```
+
+With external builds:
+
+```bash
+export QT_PLUGIN_PATH="<qtmcp-build>/lib64/qt6/plugins:<qtpsd-build>/lib64/qt6/plugins"
+./build/mcp-psd2x
 ```
 
 ### SSE
 
 ```bash
-./mcp-psd2x --backend sse --address 127.0.0.1:8000
+./build/mcp-psd2x --backend sse --address 127.0.0.1:8000
 ```
 
 ### Claude Desktop configuration
+
+With submodule build:
 
 ```json
 {
   "mcpServers": {
     "psd2x": {
-      "command": "/path/to/mcp-psd2x",
+      "command": "/path/to/mcp-psd2x/build/mcp-psd2x",
       "env": {
-        "QT_PLUGIN_PATH": "<qtmcp-build>/lib64/qt6/plugins:<qtpsd-build>/plugins",
-        "LD_LIBRARY_PATH": "<qtmcp-build>/lib64:<qtpsd-build>/lib"
+        "QT_PLUGIN_PATH": "/path/to/mcp-psd2x/build-qtmcp/lib64/qt6/plugins:/path/to/mcp-psd2x/build-qtpsd/lib64/qt6/plugins",
+        "LD_LIBRARY_PATH": "/path/to/mcp-psd2x/build-qtmcp/lib64:/path/to/mcp-psd2x/build-qtpsd/lib64"
       }
     }
   }
