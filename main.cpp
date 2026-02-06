@@ -1,6 +1,7 @@
 // Copyright (C) 2025 Signal Slot Inc.
 // SPDX-License-Identifier: BSD-3-Clause
 
+#include <QtCore/QBuffer>
 #include <QtCore/QCommandLineParser>
 #include <QtCore/QDir>
 #include <QtCore/QJsonArray>
@@ -254,6 +255,40 @@ public:
         return toJson(QJsonObject{{"saved"_L1, true}});
     }
 
+    Q_INVOKABLE QString get_layer_image(int layerId, const QString &format = "png"_L1)
+    {
+        auto index = findLayerById(layerId);
+        if (!index.isValid())
+            return toJson(QJsonObject{{"error"_L1, u"Layer %1 not found"_s.arg(layerId)}});
+
+        const auto *item = exporterModel.layerItem(index);
+        if (!item)
+            return toJson(QJsonObject{{"error"_L1, u"Layer %1 has no item data"_s.arg(layerId)}});
+
+        QImage img = item->image();
+        if (img.isNull())
+            return toJson(QJsonObject{{"error"_L1, u"Layer %1 has no image data"_s.arg(layerId)}});
+
+        const auto fmt = format.toUpper().toUtf8();
+        if (fmt != "PNG" && fmt != "JPEG" && fmt != "JPG")
+            return toJson(QJsonObject{{"error"_L1, u"Unsupported format: %1. Use: png, jpeg"_s.arg(format)}});
+
+        QByteArray data;
+        QBuffer buffer(&data);
+        buffer.open(QIODevice::WriteOnly);
+        if (!img.save(&buffer, fmt.constData()))
+            return toJson(QJsonObject{{"error"_L1, "Failed to encode image"_L1}});
+
+        return toJson(QJsonObject{
+            {"layerId"_L1, layerId},
+            {"width"_L1, img.width()},
+            {"height"_L1, img.height()},
+            {"format"_L1, format.toLower()},
+            {"mimeType"_L1, fmt == "PNG" ? "image/png"_L1 : "image/jpeg"_L1},
+            {"data"_L1, QString::fromLatin1(data.toBase64())},
+        });
+    }
+
     QHash<QString, QString> toolDescriptions() const override
     {
         return {
@@ -278,6 +313,10 @@ public:
             {"list_exporters"_L1, "List all available exporter plugins"_L1},
 
             {"save_hints"_L1, "Persist current export hints to the PSD sidecar file"_L1},
+
+            {"get_layer_image"_L1, "Get the rendered image of a specific layer as base64-encoded data"_L1},
+            {"get_layer_image/layerId"_L1, "Layer ID to get the image from"_L1},
+            {"get_layer_image/format"_L1, "Image format: png (default) or jpeg"_L1},
         };
     }
 
