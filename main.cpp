@@ -147,6 +147,12 @@ public:
         if (hint.type == QPsdExporterTreeItemModel::ExportHint::Native)
             hintObj["baseElement"_L1] = QPsdExporterTreeItemModel::ExportHint::nativeCode2Name(hint.baseElement);
         hintObj["visible"_L1] = hint.visible;
+        if (!hint.properties.isEmpty()) {
+            QJsonArray propsArr;
+            for (const auto &prop : hint.properties)
+                propsArr.append(prop);
+            hintObj["properties"_L1] = propsArr;
+        }
         obj["exportHint"_L1] = hintObj;
 
         return toJson(obj);
@@ -181,15 +187,25 @@ public:
             hint.componentName = opts["componentName"_L1].toString();
         if (opts.contains("baseElement"_L1) && !opts["baseElement"_L1].toString().isEmpty())
             hint.baseElement = QPsdExporterTreeItemModel::ExportHint::nativeName2Code(opts["baseElement"_L1].toString());
+        if (opts.contains("properties"_L1)) {
+            hint.properties.clear();
+            const auto propsArr = opts["properties"_L1].toArray();
+            for (const auto &val : propsArr)
+                hint.properties.insert(val.toString());
+        }
 
         exporterModel.setLayerHint(index, hint);
 
+        QJsonArray propsArr;
+        for (const auto &prop : hint.properties)
+            propsArr.append(prop);
         return toJson(QJsonObject{
             {"layerId"_L1, layerId},
             {"type"_L1, lower},
             {"componentName"_L1, hint.componentName},
             {"baseElement"_L1, QPsdExporterTreeItemModel::ExportHint::nativeCode2Name(hint.baseElement)},
             {"visible"_L1, hint.visible},
+            {"properties"_L1, propsArr},
         });
     }
 
@@ -303,7 +319,7 @@ public:
             {"set_export_hint"_L1, "Configure how a layer should be exported"_L1},
             {"set_export_hint/layerId"_L1, "Layer ID to configure"_L1},
             {"set_export_hint/type"_L1, "Export type: embed, merge, custom, native, skip, or none"_L1},
-            {"set_export_hint/options"_L1, "JSON object with optional keys: visible (bool), componentName (string, for custom type), baseElement (string: Container, TouchArea, Button, Button_Highlighted, for native type)"_L1},
+            {"set_export_hint/options"_L1, "JSON object with optional keys: visible (bool), componentName (string, for custom type), baseElement (string: Container, TouchArea, Button, Button_Highlighted, for native type), properties (array of strings: visible, color, position, text, size, image — controls which attributes are exported as bindable properties)"_L1},
 
             {"do_export"_L1, "Export the loaded PSD to a target format and directory"_L1},
             {"do_export/format"_L1, "Exporter plugin key (use list_exporters to see available ones)"_L1},
@@ -367,6 +383,12 @@ private:
             const auto hint = exporterModel.layerHint(index);
             obj["hintType"_L1] = hintTypeName(hint.type);
             obj["visible"_L1] = hint.visible;
+            if (!hint.properties.isEmpty()) {
+                QJsonArray propsArr;
+                for (const auto &prop : hint.properties)
+                    propsArr.append(prop);
+                obj["properties"_L1] = propsArr;
+            }
 
             if (exporterModel.rowCount(index) > 0) {
                 QJsonArray children;
