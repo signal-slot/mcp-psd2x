@@ -9,6 +9,7 @@ An MCP (Model Context Protocol) server for inspecting and exporting Adobe Photos
 | `load_psd` | `path` | Load a PSD file for inspection and export |
 | `get_layer_tree` | | Get the full layer hierarchy |
 | `get_layer_details` | `layerId` | Get detailed info for a layer (text runs, shape path, linked files, opacity, export hint) |
+| `get_layer_image` | `layerId` | Get the rendered image of a specific layer (returned as MCP image content) |
 | `set_export_hint` | `layerId`, `type`, `options` | Configure how a layer is exported |
 | `do_export` | `format`, `outputDir`, `options` | Export the PSD to a target format |
 | `list_exporters` | | List available exporter plugins |
