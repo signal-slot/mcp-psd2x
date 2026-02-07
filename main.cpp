@@ -181,6 +181,8 @@ public:
 
         auto hint = exporterModel.layerHint(index);
         hint.type = typeMap.value(lower);
+        if (opts.contains("id"_L1))
+            hint.id = opts["id"_L1].toString();
         if (opts.contains("visible"_L1))
             hint.visible = opts["visible"_L1].toBool();
         if (opts.contains("componentName"_L1) && !opts["componentName"_L1].toString().isEmpty())
@@ -201,6 +203,7 @@ public:
             propsArr.append(prop);
         return toJson(QJsonObject{
             {"layerId"_L1, layerId},
+            {"id"_L1, hint.id},
             {"type"_L1, lower},
             {"componentName"_L1, hint.componentName},
             {"baseElement"_L1, QPsdExporterTreeItemModel::ExportHint::nativeCode2Name(hint.baseElement)},
@@ -319,7 +322,7 @@ public:
             {"set_export_hint"_L1, "Configure how a layer should be exported"_L1},
             {"set_export_hint/layerId"_L1, "Layer ID to configure"_L1},
             {"set_export_hint/type"_L1, "Export type: embed, merge, custom, native, skip, or none"_L1},
-            {"set_export_hint/options"_L1, "JSON object with optional keys: visible (bool), componentName (string, for custom type), baseElement (string: Container, TouchArea, Button, Button_Highlighted, for native type), properties (array of strings: visible, color, position, text, size, image — controls which attributes are exported as bindable properties)"_L1},
+            {"set_export_hint/options"_L1, "JSON object with optional keys: id (string, identifier for binding — empty string to clear), visible (bool), componentName (string, for custom type), baseElement (string: Container, TouchArea, Button, Button_Highlighted, for native type), properties (array of strings: visible, color, position, text, size, image — controls which attributes are exported as bindable properties)"_L1},
 
             {"do_export"_L1, "Export the loaded PSD to a target format and directory"_L1},
             {"do_export/format"_L1, "Exporter plugin key (use list_exporters to see available ones)"_L1},
