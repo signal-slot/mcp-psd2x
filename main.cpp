@@ -10,6 +10,7 @@
 #include <QtMcpServer/QMcpServer>
 #include <QtPsdGui/QPsdAbstractLayerItem>
 #include <QtPsdGui/QPsdFolderLayerItem>
+#include <QtPsdGui/QPsdFontMapper>
 #include <QtPsdGui/QPsdGuiLayerTreeItemModel>
 #include <QtPsdGui/QPsdImageLayerItem>
 #include <QtPsdGui/QPsdShapeLayerItem>
@@ -92,6 +93,7 @@ public:
                     runs.append(QJsonObject{
                         {"text"_L1, run.text},
                         {"font"_L1, run.font.family()},
+                        {"originalFont"_L1, run.originalFontName},
                         {"fontSize"_L1, run.font.pointSizeF()},
                         {"color"_L1, run.color.name()},
                     });
@@ -286,6 +288,69 @@ public:
         return item->image();
     }
 
+    Q_INVOKABLE QString get_fonts_used()
+    {
+        if (exporterModel.fileName().isEmpty())
+            return toJson(QJsonObject{{"error"_L1, "No PSD file loaded"_L1}});
+
+        QSet<QString> seen;
+        QJsonArray fonts;
+        collectFonts({}, seen, fonts);
+        return toJson(QJsonObject{{"fonts"_L1, fonts}});
+    }
+
+    Q_INVOKABLE QString get_font_mappings()
+    {
+        if (exporterModel.fileName().isEmpty())
+            return toJson(QJsonObject{{"error"_L1, "No PSD file loaded"_L1}});
+
+        auto *mapper = QPsdFontMapper::instance();
+
+        QJsonObject global;
+        const auto globalMap = mapper->globalMappings();
+        for (auto it = globalMap.cbegin(); it != globalMap.cend(); ++it)
+            global[it.key()] = it.value();
+
+        QJsonObject context;
+        const auto contextMap = mapper->contextMappings(exporterModel.fileName());
+        for (auto it = contextMap.cbegin(); it != contextMap.cend(); ++it)
+            context[it.key()] = it.value();
+
+        return toJson(QJsonObject{
+            {"global"_L1, global},
+            {"context"_L1, context},
+        });
+    }
+
+    Q_INVOKABLE QString set_font_mapping(const QString &fromFont, const QString &toFont, bool global)
+    {
+        if (exporterModel.fileName().isEmpty())
+            return toJson(QJsonObject{{"error"_L1, "No PSD file loaded"_L1}});
+
+        auto *mapper = QPsdFontMapper::instance();
+
+        if (global) {
+            if (toFont.isEmpty())
+                mapper->removeGlobalMapping(fromFont);
+            else
+                mapper->setGlobalMapping(fromFont, toFont);
+            mapper->saveGlobalMappings();
+        } else {
+            auto mappings = mapper->contextMappings(exporterModel.fileName());
+            if (toFont.isEmpty())
+                mappings.remove(fromFont);
+            else
+                mappings[fromFont] = toFont;
+            mapper->setContextMappings(exporterModel.fileName(), mappings);
+        }
+
+        return toJson(QJsonObject{
+            {"fromFont"_L1, fromFont},
+            {"toFont"_L1, toFont},
+            {"global"_L1, global},
+        });
+    }
+
     QHash<QString, QString> toolDescriptions() const override
     {
         return {
@@ -313,6 +378,15 @@ public:
 
             {"get_layer_image"_L1, "Get the rendered image of a specific layer"_L1},
             {"get_layer_image/layerId"_L1, "Layer ID to get the image from"_L1},
+
+            {"get_fonts_used"_L1, "List all fonts used in the loaded PSD file with their resolved mappings"_L1},
+
+            {"get_font_mappings"_L1, "Get current font mapping settings (global and per-PSD context)"_L1},
+
+            {"set_font_mapping"_L1, "Set or remove a font mapping"_L1},
+            {"set_font_mapping/fromFont"_L1, "Original font name from PSD (e.g. MyriadPro-Bold)"_L1},
+            {"set_font_mapping/toFont"_L1, "Target font name to map to (empty string to remove mapping)"_L1},
+            {"set_font_mapping/global"_L1, "If true, applies globally; if false, applies only to the currently loaded PSD"_L1},
         };
     }
 
@@ -377,6 +451,30 @@ private:
             }
 
             array.append(obj);
+        }
+    }
+
+    void collectFonts(const QModelIndex &parent, QSet<QString> &seen, QJsonArray &fonts) const
+    {
+        const auto psdPath = exporterModel.fileName();
+        for (int row = 0; row < exporterModel.rowCount(parent); ++row) {
+            auto index = exporterModel.index(row, 0, parent);
+            const auto *item = exporterModel.layerItem(index);
+            if (item && item->type() == QPsdAbstractLayerItem::Text) {
+                const auto *text = static_cast<const QPsdTextLayerItem *>(item);
+                for (const auto &run : text->runs()) {
+                    if (!run.originalFontName.isEmpty() && !seen.contains(run.originalFontName)) {
+                        seen.insert(run.originalFontName);
+                        const auto resolved = QPsdFontMapper::instance()->resolveFont(run.originalFontName, psdPath);
+                        fonts.append(QJsonObject{
+                            {"psdFont"_L1, run.originalFontName},
+                            {"resolvedFont"_L1, resolved.family()},
+                            {"resolvedStyle"_L1, resolved.styleName()},
+                        });
+                    }
+                }
+            }
+            collectFonts(index, seen, fonts);
         }
     }
 

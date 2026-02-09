@@ -19,3 +19,14 @@ target_link_libraries(mcp-psd2x PRIVATE
     Qt::PsdGui
     Qt::PsdExporter
 )
+
+# When building against local submodule builds, ensure their headers take
+# priority over any system-installed (potentially older) QtPsd headers.
+foreach(_pkg PsdCore PsdGui PsdExporter)
+    if(TARGET Qt6::${_pkg})
+        get_target_property(_inc Qt6::${_pkg} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_inc)
+            target_include_directories(mcp-psd2x BEFORE PRIVATE ${_inc})
+        endif()
+    endif()
+endforeach()
