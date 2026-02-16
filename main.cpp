@@ -7,8 +7,11 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtGui/QGuiApplication>
+#include <QtGui/QPainter>
+#include <QtPsdCore/qpsdblend.h>
 #include <QtMcpServer/QMcpServer>
 #include <QtPsdGui/QPsdAbstractLayerItem>
+#include <QtPsdGui/qpsdguiglobal.h>
 #include <QtPsdGui/QPsdFolderLayerItem>
 #include <QtPsdGui/QPsdFontMapper>
 #include <QtPsdGui/QPsdGuiLayerTreeItemModel>
@@ -285,7 +288,24 @@ public:
         if (!item)
             return {};
 
-        return item->image();
+        if (item->type() != QPsdAbstractLayerItem::Folder)
+            return item->image();
+
+        // Folder layer: composite all visible children
+        const QRect bounds = computeBoundingRect(index);
+        if (bounds.isEmpty())
+            return {};
+
+        QImage canvas(bounds.size(), QImage::Format_ARGB32);
+        canvas.fill(Qt::transparent);
+
+        QPainter painter(&canvas);
+        const auto blendMode = item->record().blendMode();
+        const bool passThrough = (blendMode == QPsdBlend::PassThrough);
+        compositeChildren(index, painter, bounds.topLeft(), passThrough);
+        painter.end();
+
+        return canvas;
     }
 
     Q_INVOKABLE QString get_fonts_used()
@@ -482,6 +502,131 @@ private:
     {
         static const char *names[] = {"embed", "merge", "custom", "native", "skip", "none"};
         return QString::fromLatin1(names[t]);
+    }
+
+    // Recursively compute the bounding box of all child layers under `parent`
+    QRect computeBoundingRect(const QModelIndex &parent) const
+    {
+        QRect bounds;
+        for (int row = 0; row < exporterModel.rowCount(parent); ++row) {
+            auto index = exporterModel.index(row, 0, parent);
+            const auto *item = exporterModel.layerItem(index);
+            if (!item || !item->isVisible())
+                continue;
+            if (item->type() == QPsdAbstractLayerItem::Folder) {
+                bounds = bounds.united(computeBoundingRect(index));
+            } else {
+                bounds = bounds.united(item->rect());
+            }
+        }
+        return bounds;
+    }
+
+    // Apply transparency mask and layer mask to a layer's image
+    QImage applyMasks(const QPsdAbstractLayerItem *item) const
+    {
+        QImage image = item->image();
+        if (image.isNull())
+            return image;
+
+        // Apply transparency mask for layers without built-in alpha
+        const QImage transMask = item->transparencyMask();
+        if (!transMask.isNull() && !image.hasAlphaChannel()) {
+            image = image.convertToFormat(QImage::Format_ARGB32);
+            for (int y = 0; y < qMin(image.height(), transMask.height()); ++y) {
+                QRgb *imgLine = reinterpret_cast<QRgb *>(image.scanLine(y));
+                const uchar *maskLine = transMask.constScanLine(y);
+                for (int x = 0; x < qMin(image.width(), transMask.width()); ++x) {
+                    imgLine[x] = qRgba(qRed(imgLine[x]), qGreen(imgLine[x]),
+                                       qBlue(imgLine[x]), maskLine[x]);
+                }
+            }
+        }
+
+        // Apply raster layer mask if present
+        const QImage layerMask = item->layerMask();
+        if (!layerMask.isNull()) {
+            const QRect maskRect = item->layerMaskRect();
+            const QRect layerRect = item->rect();
+            const int defaultColor = item->layerMaskDefaultColor();
+
+            image = image.convertToFormat(QImage::Format_ARGB32);
+            for (int y = 0; y < image.height(); ++y) {
+                QRgb *scanLine = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < image.width(); ++x) {
+                    const int maskX = (layerRect.x() + x) - maskRect.x();
+                    const int maskY = (layerRect.y() + y) - maskRect.y();
+                    int maskValue = defaultColor;
+                    if (maskX >= 0 && maskX < layerMask.width() &&
+                        maskY >= 0 && maskY < layerMask.height()) {
+                        maskValue = qGray(layerMask.pixel(maskX, maskY));
+                    }
+                    const int alpha = qAlpha(scanLine[x]);
+                    const int newAlpha = (alpha * maskValue) / 255;
+                    scanLine[x] = qRgba(qRed(scanLine[x]), qGreen(scanLine[x]),
+                                        qBlue(scanLine[x]), newAlpha);
+                }
+            }
+        }
+
+        return image;
+    }
+
+    // Recursively composite visible children onto the given painter.
+    // `origin` is the top-left of the canvas in document coordinates.
+    // `passThrough` means children are drawn directly (no intermediate buffer).
+    void compositeChildren(const QModelIndex &parent, QPainter &painter,
+                           const QPoint &origin, bool passThrough) const
+    {
+        const int count = exporterModel.rowCount(parent);
+        // Iterate bottom-to-top (last row = bottommost layer in PSD model)
+        for (int row = count - 1; row >= 0; --row) {
+            auto index = exporterModel.index(row, 0, parent);
+            const auto *item = exporterModel.layerItem(index);
+            if (!item || !item->isVisible())
+                continue;
+
+            if (item->type() == QPsdAbstractLayerItem::Folder) {
+                const auto folderBlend = item->record().blendMode();
+                const bool folderPassThrough = (folderBlend == QPsdBlend::PassThrough);
+
+                if (folderPassThrough) {
+                    // PassThrough: children draw directly onto the current canvas
+                    compositeChildren(index, painter, origin, true);
+                } else {
+                    // Non-PassThrough: composite children into an intermediate buffer
+                    const QRect childBounds = computeBoundingRect(index);
+                    if (childBounds.isEmpty())
+                        continue;
+
+                    QImage groupCanvas(childBounds.size(), QImage::Format_ARGB32);
+                    groupCanvas.fill(Qt::transparent);
+
+                    QPainter groupPainter(&groupCanvas);
+                    compositeChildren(index, groupPainter, childBounds.topLeft(), false);
+                    groupPainter.end();
+
+                    // Draw the group buffer with the folder's blend mode and opacity
+                    painter.save();
+                    painter.setCompositionMode(QtPsdGui::compositionMode(folderBlend));
+                    painter.setOpacity(painter.opacity() * item->opacity() * item->fillOpacity());
+                    painter.drawImage(childBounds.topLeft() - origin, groupCanvas);
+                    painter.restore();
+                }
+            } else {
+                // Leaf layer: apply masks, then draw with blend mode and opacity
+                QImage layerImage = applyMasks(item);
+                if (layerImage.isNull())
+                    continue;
+
+                painter.save();
+                painter.setCompositionMode(
+                    QtPsdGui::compositionMode(item->record().blendMode()));
+                painter.setOpacity(painter.opacity() * item->opacity() * item->fillOpacity());
+                painter.drawImage(item->rect().topLeft() - origin, layerImage);
+                painter.restore();
+            }
+        }
     }
 };
 
