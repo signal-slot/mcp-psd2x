@@ -656,6 +656,7 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     McpServer server(parser.value(backendOption));
+    QObject::connect(&server, &QMcpServer::finished, &app, &QCoreApplication::quit);
     server.start(parser.value(addressOption));
 
     return app.exec();
