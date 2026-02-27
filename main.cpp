@@ -170,16 +170,15 @@ public:
 
         static const QHash<QString, QPsdExporterTreeItemModel::ExportHint::Type> typeMap = {
             {"embed"_L1,  QPsdExporterTreeItemModel::ExportHint::Embed},
-            {"merge"_L1,  QPsdExporterTreeItemModel::ExportHint::Merge},
+            {"merge"_L1,  QPsdExporterTreeItemModel::ExportHint::Merged},
             {"custom"_L1, QPsdExporterTreeItemModel::ExportHint::Component},
             {"native"_L1, QPsdExporterTreeItemModel::ExportHint::Native},
             {"skip"_L1,   QPsdExporterTreeItemModel::ExportHint::Skip},
-            {"none"_L1,   QPsdExporterTreeItemModel::ExportHint::None},
         };
 
         const auto lower = type.toLower();
         if (!typeMap.contains(lower))
-            return toJson(QJsonObject{{"error"_L1, u"Unknown type: %1. Use: embed, merge, custom, native, skip, none"_s.arg(type)}});
+            return toJson(QJsonObject{{"error"_L1, u"Unknown type: %1. Use: embed, merge, custom, native, skip"_s.arg(type)}});
 
         const auto opts = QJsonDocument::fromJson(options.toUtf8()).object();
 
@@ -234,14 +233,13 @@ public:
         const int w = opts["width"_L1].toInt(0) > 0 ? opts["width"_L1].toInt() : sz.width();
         const int h = opts["height"_L1].toInt(0) > 0 ? opts["height"_L1].toInt() : sz.height();
 
-        QVariantMap hint;
-        hint.insert("width"_L1, w);
-        hint.insert("height"_L1, h);
-        hint.insert("fontScaleFactor"_L1, opts["fontScaleFactor"_L1].toDouble(1.0));
-        hint.insert("imageScaling"_L1, opts["imageScaling"_L1].toBool(false));
-        hint.insert("makeCompact"_L1, opts["makeCompact"_L1].toBool(false));
+        QPsdExporterPlugin::ExportConfig config;
+        config.targetSize = QSize(w, h);
+        config.fontScaleFactor = opts["fontScaleFactor"_L1].toDouble(1.0);
+        config.imageScaling = opts["imageScaling"_L1].toBool(false);
+        config.makeCompact = opts["makeCompact"_L1].toBool(false);
 
-        if (!plugin->exportTo(&exporterModel, outputDir, hint))
+        if (!plugin->exportTo(&exporterModel, outputDir, config))
             return toJson(QJsonObject{{"error"_L1, "Export failed"_L1}});
 
         return toJson(QJsonObject{
@@ -384,7 +382,7 @@ public:
 
             {"set_export_hint"_L1, "Configure how a layer should be exported"_L1},
             {"set_export_hint/layerId"_L1, "Layer ID to configure"_L1},
-            {"set_export_hint/type"_L1, "Export type: embed, merge, custom, native, skip, or none"_L1},
+            {"set_export_hint/type"_L1, "Export type: embed, merge, custom, native, skip"_L1},
             {"set_export_hint/options"_L1, "JSON object with optional keys: id (string, identifier for binding — empty string to clear), visible (bool), componentName (string, for custom type), baseElement (string: Container, TouchArea, Button, Button_Highlighted, for native type), properties (array of strings: visible, color, position, text, size, image — controls which attributes are exported as bindable properties)"_L1},
 
             {"do_export"_L1, "Export the loaded PSD to a target format and directory"_L1},
@@ -500,7 +498,7 @@ private:
 
     static QString hintTypeName(QPsdExporterTreeItemModel::ExportHint::Type t)
     {
-        static const char *names[] = {"embed", "merge", "custom", "native", "skip", "none"};
+        static const char *names[] = {"embed", "merge", "custom", "native", "skip"};
         return QString::fromLatin1(names[t]);
     }
 
