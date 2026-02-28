@@ -9,7 +9,14 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPainter>
 #include <QtPsdCore/qpsdblend.h>
+#include <QtMcpCommon/QMcpPrompt>
+#include <QtMcpCommon/QMcpPromptArgument>
+#include <QtMcpCommon/QMcpPromptMessage>
+#include <QtMcpCommon/QMcpPromptMessageContent>
+#include <QtMcpCommon/QMcpTextContent>
+#include <QtMcpCommon/qmcprole.h>
 #include <QtMcpServer/QMcpServer>
+#include <QtMcpServer/QMcpServerSession>
 #include <QtPsdGui/QPsdAbstractLayerItem>
 #include <QtPsdGui/qpsdguiglobal.h>
 #include <QtPsdGui/QPsdFolderLayerItem>
@@ -36,6 +43,146 @@ public:
         : QMcpServer(backend, parent)
     {
         exporterModel.setSourceModel(&guiModel);
+
+        connect(this, &QMcpServer::newSession, this, [](QMcpServerSession *session) {
+            QMcpPrompt prompt;
+            prompt.setName("export-screen"_L1);
+            prompt.setDescription("Export a PSD artboard to a GUI framework (QML, Slint, Flutter, etc.)"_L1);
+
+            QMcpPromptArgument pathArg;
+            pathArg.setName("path"_L1);
+            pathArg.setDescription("Absolute path to the PSD file"_L1);
+            pathArg.setRequired(true);
+
+            QMcpPromptArgument formatArg;
+            formatArg.setName("format"_L1);
+            formatArg.setDescription("Export format key (e.g. QtQuick, Slint). Run list_exporters to see options."_L1);
+            formatArg.setRequired(false);
+
+            prompt.setArguments({pathArg, formatArg});
+
+            QMcpTextContent text(uR"(# Export a PSD Artboard to a GUI Framework
+
+Arguments: path = {path}, format = {format}
+
+## Steps
+
+### 1. Load the PSD file
+
+```
+load_psd(path={path})
+```
+
+This returns file information including dimensions and layer count.
+
+### 2. Inspect the layer tree
+
+```
+get_layer_tree()
+```
+
+Review the child layers and classify them:
+
+- **Interactive elements (buttons, nav items, etc.)** - use `baseElement: "TouchArea"` to emit as a clickable area
+- **Text labels (dynamically updated)** - assign an `id` so they become property aliases
+- **Decorative elements** - no hint needed (exported by default)
+
+Use `get_layer_details(layerId=...)` to inspect individual layers for more detail (text runs, shape info, linked files, etc.).
+Use `get_layer_image(layerId=...)` to visually inspect a layer's rendered appearance.
+
+### 3. Set export hints
+
+**Root artboard (top-level folder):**
+```
+set_export_hint(layerId=..., type="custom", options='{"componentName": "ScreenName"}')
+```
+
+**Interactive elements (buttons, navigation, etc.):**
+```
+set_export_hint(layerId=..., type="embed", options='{"id": "buttonName", "baseElement": "TouchArea"}')
+```
+
+**Text labels:**
+```
+set_export_hint(layerId=..., type="embed", options='{"id": "labelName"}')
+```
+
+### 4. Save hints
+
+```
+save_hints()
+```
+
+This persists export hints to a `.psd_` sidecar file next to the PSD.
+
+### 5. Run the export
+
+```
+do_export(format="{format}", outputDir=".", options='{}')
+```
+
+If `{format}` is empty, call `list_exporters` to see available formats and ask the user to choose one.
+
+### 6. Integrate generated files
+
+Use a **design/logic separation** pattern to keep exported files re-exportable while developing logic independently.
+
+**Recommended project structure (QML example):**
+```
+qml/
+  design/     # Exported .ui.qml files (never hand-edit)
+    ScreenName.ui.qml
+  logic/      # Logic wrappers
+    ScreenName.qml
+  qmldir      # Type registration
+```
+
+**qmldir** registers the design file with a `UI` suffix and the logic file as the public type:
+```
+ScreenNameUI 1.0 design/ScreenName.ui.qml
+ScreenName   1.0 logic/ScreenName.qml
+```
+
+**Logic wrapper** (`logic/ScreenName.qml`) inherits from the design type:
+```qml
+ScreenNameUI {
+    // Bind property aliases exposed by the design file
+    labelName.text: root.someValue
+    buttonName.onClicked: doSomething()
+}
+```
+
+This way:
+- `design/ScreenName.ui.qml` can be re-exported at any time without losing logic
+- `logic/ScreenName.qml` develops independently against stable property aliases
+- The design file remains openable standalone with `qml6` for visual preview
+- Consumers just use `ScreenName {}` and get the complete component
+
+For simple design-only components (buttons, icons, etc.) that need no logic wrapper, register them directly without the `UI` suffix:
+```
+ButtonPower 1.0 design/ButtonPower.ui.qml
+```
+
+### 7. Verify
+
+Build or preview to confirm the layout and interactions work correctly.
+
+## Important notes
+
+- Never hand-edit `.ui.qml` files. Re-export if changes are needed.
+- All logic and event handlers belong in the logic wrapper, not in `.ui.qml`.
+- `type: "embed"` inlines the layer into the root component file.
+- `type: "custom"` generates a separate reusable component file.
+- Use `qmldir` type renaming (`ComponentUI` / `Component`) to connect design and logic layers.
+)"_s);
+
+            QMcpPromptMessageContent content(text);
+            QMcpPromptMessage message;
+            message.setRole(QMcpRole::user);
+            message.setContent(content);
+
+            session->appendPrompt(prompt, message);
+        });
     }
 
     Q_INVOKABLE QString load_psd(const QString &path)
